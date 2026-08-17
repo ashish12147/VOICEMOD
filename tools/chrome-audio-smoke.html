@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ChromeMic audio smoke source</title>
+<style>
+  body { font: 20px system-ui; margin: 48px; color: #172033; }
+  strong { color: #3760f6; }
+</style>
+<h1>ChromeMic test audio</h1>
+<p>This temporary page generates a quiet <strong>997 Hz</strong> tone for route verification.</p>
+<p id="state">Starting audio…</p>
+<script>
+  const context = new AudioContext();
+  const oscillator = new OscillatorNode(context, { frequency: 997, type: "sine" });
+  const gain = new GainNode(context, { gain: 0.025 });
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start();
+  const resume = () => context.resume().then(() => {
+    document.querySelector("#state").textContent = "Audio is playing. This window may be minimized.";
+  });
+  resume();
+  document.addEventListener("click", resume);
+</script>

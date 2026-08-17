@@ -1,0 +1,31 @@
+CHROMEMIC 1.1 — QUICK START
+===========================
+
+WHAT IT DOES
+Routes only one selected application's audio into a virtual microphone cable.
+Choose Chrome for YouTube; game sound and unrelated applications are excluded.
+
+SETUP
+1. Install a trusted virtual cable such as VB-CABLE:
+   https://vb-audio.com/Cable/index.htm
+
+2. Open Chrome and play the YouTube/video/audio you want to send.
+
+3. Run ChromeMic.exe. Press Refresh apps if Chrome is missing.
+
+4. APPLICATION: choose "Google Chrome — all tabs/windows in this process tree".
+
+5. DESTINATION: choose the cable playback side (normally CABLE Input for VB-CABLE).
+
+6. Press Start routing. Confirm the meter moves.
+
+7. In the game, choose the matching cable recording side as Microphone
+   (normally CABLE Output for VB-CABLE).
+
+IMPORTANT
+- Chrome selection includes all tabs/windows in that selected process tree; it is not per-tab.
+- If Chrome exits or restarts, routing stops. Press Refresh apps, confirm the selection, and Start again.
+- Paused/silent Chrome produces silence. Protected/DRM playback may not be capturable.
+- Stop releases capture. Mute keeps the route open but sends silence.
+- Use headphones and disable mic/cable monitoring to prevent feedback.
+- Do not select Voicemod's internal output bridge as the destination. Use a true virtual cable.

@@ -1,0 +1,10 @@
+/build/
+/build-ninja*/
+/build-cmake*/
+/build-artifacts/
+/dist/*.res
+/*.obj
+/*.pdb
+/*.ilk
+/*.exp
+/*.lib
