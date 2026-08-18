@@ -1,11 +1,13 @@
-ChromeMic 1.1.0 - per-application local unsigned x64 release
+ChromeMic 1.2.0 - app + optional microphone mixer, unsigned x64 release
 MSVC toolset: 14.44.35207
 Windows SDK: 10.0.26100.0
 Runtime: statically linked (/MT)
 Hardening: ASLR, high-entropy VA, DEP/NX, CFG, CET compatibility
 Package timestamps: normalized for deterministic archives
 Automated tests run: True
-Endpoint-open smoke run: True
-Process-isolation signal test run: True
-ChromeMic.exe SHA-256: 3B61DF6F6A853517E0C995207347F04218B74833FDE92BF7E16CA3381D008C3D
-Authenticode: unsigned local build (sign before public redistribution)
+Endpoint-open smoke run: False
+Physical-microphone smoke run: False
+Headphone-loopback smoke run: False
+Process-isolation signal test run: False
+ChromeMic.exe SHA-256: BC28B47378E4EE758C90DAC35AB936EC23505FF0D3880277C3F785CD5D1936C4
+Authenticode: unsigned; verify SHA-256 and expect a Windows reputation warning

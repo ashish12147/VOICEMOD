@@ -219,7 +219,7 @@ std::wstring FriendlyHResult(long rawResult) {
     case AUDCLNT_E_DEVICE_INVALIDATED:
         return L"the endpoint was disconnected or its driver restarted";
     case AUDCLNT_E_UNSUPPORTED_FORMAT:
-        return L"the endpoints use incompatible formats (set both to 48 kHz in Sound settings)";
+        return L"the endpoint cannot accept ChromeMic's shared format (enable shared mode or try 44.1/48 kHz in Sound settings)";
     case AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED:
         return L"Exclusive mode is not available";
     case E_ACCESSDENIED:

@@ -1,11 +1,33 @@
 param(
     [switch]$SkipTests,
     [switch]$HardwareSmoke,
+    [switch]$MicrophoneSmoke,
+    [switch]$MonitorSmoke,
     [switch]$ProcessIsolationTest
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+function Copy-Utf8LfTextFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+    $content = [System.IO.File]::ReadAllText($SourcePath)
+    $content = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($DestinationPath, $content, $utf8WithoutBom)
+}
+
+function Write-AsciiLfTextFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$Lines
+    )
+    $content = ($Lines -join "`n") + "`n"
+    [System.IO.File]::WriteAllText($Path, $content, [System.Text.Encoding]::ASCII)
+}
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
@@ -74,22 +96,26 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Resource compilation failed with exit code $LASTEXITCODE." }
 
     $appExe = Join-Path $releaseStage 'ChromeMic.exe'
-    & $compiler @common "/Fo$appObjectRoot\" src\main.cpp src\app_processes.cpp src\audio_devices.cpp src\audio_router.cpp src\dsp.cpp src\process_loopback.cpp $resource "/Fe:$appExe" /link /SUBSYSTEM:WINDOWS @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib advapi32.lib comctl32.lib dwmapi.lib gdi32.lib shell32.lib user32.lib uxtheme.lib
+    & $compiler @common "/Fo$appObjectRoot\" src\main.cpp src\app_processes.cpp src\audio_devices.cpp src\audio_router.cpp src\dsp.cpp src\process_loopback.cpp src\update_checker.cpp src\voice_effects.cpp $resource "/Fe:$appExe" /link /SUBSYSTEM:WINDOWS @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib advapi32.lib comctl32.lib dwmapi.lib gdi32.lib shell32.lib user32.lib uxtheme.lib winhttp.lib
     if ($LASTEXITCODE -ne 0) { throw "ChromeMic compilation failed with exit code $LASTEXITCODE." }
 
     if (-not $SkipTests) {
         $testExe = Join-Path $binaryRoot 'chromemic_tests.exe'
-        & $compiler @common "/Fo$testObjectRoot\" tests\chromemic_tests.cpp src\app_processes.cpp src\dsp.cpp src\audio_devices.cpp src\audio_router.cpp src\process_loopback.cpp "/Fe:$testExe" /link /SUBSYSTEM:CONSOLE @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib user32.lib
+        & $compiler @common "/Fo$testObjectRoot\" tests\chromemic_tests.cpp src\app_processes.cpp src\dsp.cpp src\audio_devices.cpp src\audio_router.cpp src\process_loopback.cpp src\update_checker.cpp src\voice_effects.cpp "/Fe:$testExe" /link /SUBSYSTEM:CONSOLE @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib user32.lib winhttp.lib
         if ($LASTEXITCODE -ne 0) { throw "Test compilation failed with exit code $LASTEXITCODE." }
         & $testExe
         if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }
     }
 
-    if ($HardwareSmoke) {
+    $runHardwareSmoke = $HardwareSmoke -or $MicrophoneSmoke -or $MonitorSmoke
+    if ($runHardwareSmoke) {
         $smokeExe = Join-Path $binaryRoot 'chromemic_smoke.exe'
-        & $compiler @common "/Fo$smokeObjectRoot\" tools\smoke_test.cpp src\app_processes.cpp src\audio_router.cpp src\audio_devices.cpp src\dsp.cpp src\process_loopback.cpp "/Fe:$smokeExe" /link /SUBSYSTEM:CONSOLE @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib user32.lib
+        & $compiler @common "/Fo$smokeObjectRoot\" tools\smoke_test.cpp src\app_processes.cpp src\audio_router.cpp src\audio_devices.cpp src\dsp.cpp src\process_loopback.cpp src\voice_effects.cpp "/Fe:$smokeExe" /link /SUBSYSTEM:CONSOLE @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib user32.lib
         if ($LASTEXITCODE -ne 0) { throw "Smoke-test compilation failed with exit code $LASTEXITCODE." }
-        & $smokeExe
+        $smokeArguments = @()
+        if ($MicrophoneSmoke -or $MonitorSmoke) { $smokeArguments += '--with-mic' }
+        if ($MonitorSmoke) { $smokeArguments += '--with-monitor' }
+        & $smokeExe @smokeArguments
         if ($LASTEXITCODE -ne 0) { throw "Hardware smoke test could not complete (exit code $LASTEXITCODE)." }
     }
 
@@ -99,37 +125,39 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Tone-renderer compilation failed with exit code $LASTEXITCODE." }
 
         $isolationExe = Join-Path $binaryRoot 'chromemic_process_isolation_test.exe'
-        & $compiler @common "/Fo$isolationObjectRoot\" tools\process_isolation_test.cpp src\audio_router.cpp src\audio_devices.cpp src\dsp.cpp src\process_loopback.cpp "/Fe:$isolationExe" /link /SUBSYSTEM:CONSOLE @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib user32.lib
+        & $compiler @common "/Fo$isolationObjectRoot\" tools\process_isolation_test.cpp src\audio_router.cpp src\audio_devices.cpp src\dsp.cpp src\process_loopback.cpp src\voice_effects.cpp "/Fe:$isolationExe" /link /SUBSYSTEM:CONSOLE @secureLink ole32.lib uuid.lib avrt.lib propsys.lib mmdevapi.lib user32.lib
         if ($LASTEXITCODE -ne 0) { throw "Process-isolation test compilation failed with exit code $LASTEXITCODE." }
         & $isolationExe --tone-renderer $toneExe
         if ($LASTEXITCODE -ne 0) { throw "Process-isolation signal test did not pass (exit code $LASTEXITCODE)." }
     }
 
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'START-HERE.txt') -Destination $releaseStage -Force
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $releaseStage -Force
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'AUDIT.md') -Destination $releaseStage -Force
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $releaseStage -Force
+    foreach ($releaseDocument in @('START-HERE.txt', 'README.md', 'AUDIT.md', 'LICENSE')) {
+        Copy-Utf8LfTextFile -SourcePath (Join-Path $projectRoot $releaseDocument) -DestinationPath (Join-Path $releaseStage $releaseDocument)
+    }
 
     $exeHash = (Get-FileHash -LiteralPath $appExe -Algorithm SHA256).Hash
-    @(
-        'ChromeMic 1.1.0 - per-application local unsigned x64 release'
+    $buildInfoLines = @(
+        'ChromeMic 1.2.0 - app + optional microphone mixer, unsigned x64 release'
         "MSVC toolset: $($msvcVersion.Name)"
         "Windows SDK: $($sdkVersion.Name)"
         'Runtime: statically linked (/MT)'
         'Hardening: ASLR, high-entropy VA, DEP/NX, CFG, CET compatibility'
         'Package timestamps: normalized for deterministic archives'
         "Automated tests run: $(-not $SkipTests)"
-        "Endpoint-open smoke run: $([bool]$HardwareSmoke)"
+        "Endpoint-open smoke run: $([bool]$runHardwareSmoke)"
+        "Physical-microphone smoke run: $([bool]($MicrophoneSmoke -or $MonitorSmoke))"
+        "Headphone-loopback smoke run: $([bool]$MonitorSmoke)"
         "Process-isolation signal test run: $([bool]$ProcessIsolationTest)"
         "ChromeMic.exe SHA-256: $exeHash"
-        'Authenticode: unsigned local build (sign before public redistribution)'
-    ) | Set-Content -LiteralPath (Join-Path $releaseStage 'BUILD-INFO.txt') -Encoding ASCII
+        'Authenticode: unsigned; verify SHA-256 and expect a Windows reputation warning'
+    )
+    Write-AsciiLfTextFile -Path (Join-Path $releaseStage 'BUILD-INFO.txt') -Lines $buildInfoLines
 
     $hashLines = Get-ChildItem -LiteralPath $releaseStage -File | Sort-Object Name | ForEach-Object {
         $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
         "$hash  $($_.Name)"
     }
-    $hashLines | Set-Content -LiteralPath (Join-Path $releaseStage 'SHA256SUMS.txt') -Encoding ASCII
+    Write-AsciiLfTextFile -Path (Join-Path $releaseStage 'SHA256SUMS.txt') -Lines $hashLines
 
     $normalizedTimestamp = [DateTime]::Parse('2026-01-01T00:00:00Z').ToUniversalTime()
     Get-ChildItem -LiteralPath $releaseStage -File | ForEach-Object {
@@ -158,11 +186,10 @@ try {
         Remove-Item -LiteralPath $distBackup -Recurse -Force
     }
 
-    $zipPath = Join-Path $projectRoot 'ChromeMic-1.1.0-win-x64.zip'
+    $zipPath = Join-Path $projectRoot 'ChromeMic-1.2.0-win-x64.zip'
     Compress-Archive -Path (Join-Path $resolvedDist '*') -DestinationPath $zipPath -CompressionLevel Optimal -Force
     $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
-    "$zipHash  $(Split-Path -Leaf $zipPath)" |
-        Set-Content -LiteralPath ($zipPath + '.sha256.txt') -Encoding ASCII
+    Write-AsciiLfTextFile -Path ($zipPath + '.sha256.txt') -Lines @("$zipHash  $(Split-Path -Leaf $zipPath)")
 
     Write-Host "Build complete: $(Join-Path $resolvedDist 'ChromeMic.exe')"
     Write-Host "Release archive: $zipPath"

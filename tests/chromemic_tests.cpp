@@ -3,6 +3,8 @@
 #include "audio_router.h"
 #include "dsp.h"
 #include "process_loopback.h"
+#include "update_checker.h"
+#include "voice_effects_tests.inc"
 
 #include <Windows.h>
 #include <ks.h>
@@ -104,6 +106,92 @@ void TestMuteAndGainClamp() {
     Check(AudioProcessor::ClampGainDb(99.0F) == 6.0F, "upper gain clamp");
     Check(AudioProcessor::ClampGainDb(-99.0F) == -24.0F, "lower gain clamp");
     Check(AudioProcessor::ClampGainDb(std::numeric_limits<float>::quiet_NaN()) == 0.0F, "NaN gain becomes zero");
+}
+
+void TestPcm16Mixing() {
+    constexpr uint32_t frames = 3;
+    const int16_t application[] = {10000, -10000, 30000, -30000, 1200, -1200};
+    const int16_t microphone[] = {5000, -5000, 30000, -30000, -1200, 1200};
+    int16_t output[frames * 2]{};
+
+    const DspResult mixed = MixPcm16Stereo(
+        reinterpret_cast<const std::byte*>(application),
+        reinterpret_cast<const std::byte*>(microphone),
+        reinterpret_cast<std::byte*>(output), frames, false);
+    Check(output[0] > 14990 && output[0] < 15010 &&
+              output[1] < -14990 && output[1] > -15010,
+          "PCM16 mixer sums application and microphone samples");
+    Check(mixed.limiting && mixed.peak <= 0.891251F,
+          "PCM16 mix limiter protects summed sources at -1 dBFS");
+    Check(output[4] == 0 && output[5] == 0,
+          "PCM16 mixer preserves cancellation between sources");
+
+    const DspResult applicationOnly = MixPcm16Stereo(
+        reinterpret_cast<const std::byte*>(application), nullptr,
+        reinterpret_cast<std::byte*>(output), 1, false);
+    Check(output[0] > 9990 && output[0] < 10010 && applicationOnly.peak > 0.30F,
+          "PCM16 mixer treats an absent microphone as silence");
+
+    const DspResult muted = MixPcm16Stereo(
+        reinterpret_cast<const std::byte*>(application),
+        reinterpret_cast<const std::byte*>(microphone),
+        reinterpret_cast<std::byte*>(output), frames, true);
+    bool allSilent = true;
+    for (int16_t sample : output) {
+        allSilent = allSilent && sample == 0;
+    }
+    Check(allSilent && muted.peak == 0.0F && !muted.limiting,
+          "game-output mute produces absolute silence after mixing");
+    Check(MixPcm16Stereo(nullptr, nullptr, nullptr, frames, false).peak == 0.0F,
+          "PCM16 mixer is null-output safe");
+}
+
+void TestUpdateManifestAndVersions() {
+    SemanticVersion version;
+    Check(ParseSemanticVersion("1.2.0", version) &&
+              version.major == 1 && version.minor == 2 && version.patch == 0,
+          "strict semantic version accepts MAJOR.MINOR.PATCH");
+    Check(!ParseSemanticVersion("01.2.0", version) &&
+              !ParseSemanticVersion("1.2", version) &&
+              !ParseSemanticVersion("1.2.0-beta", version) &&
+              !ParseSemanticVersion("4294967296.0.0", version),
+          "strict semantic version rejects ambiguity, suffixes, and overflow");
+    int comparison = 0;
+    Check(CompareSemanticVersionStrings("1.2.0", "1.1.9", comparison) &&
+              comparison > 0,
+          "semantic versions compare numerically");
+
+    constexpr std::string_view validManifest =
+        R"({"version":"1.2.0","download_url":"https://github.com/ashish12147/VOICEMOD/releases/download/v1.2.0/ChromeMic-1.2.0-win-x64.zip"})";
+    UpdateManifest manifest;
+    Check(ParseUpdateManifest(validManifest, manifest) == UpdateManifestError::None &&
+              manifest.version == "1.2.0",
+          "strict update manifest accepts the matching official GitHub release URL");
+
+    const std::string originalVersion = manifest.version;
+    Check(ParseUpdateManifest(
+              R"({"version":"1.2.0","version":"1.2.0","download_url":"https://github.com/ashish12147/VOICEMOD/releases/download/v1.2.0/ChromeMic-1.2.0-win-x64.zip"})",
+              manifest) == UpdateManifestError::DuplicateField,
+          "update manifest rejects duplicate security-sensitive fields");
+    Check(ParseUpdateManifest(
+              R"({"version":"1.2.0","download_url":"https://evil.example/ChromeMic.zip"})",
+              manifest) == UpdateManifestError::InvalidDownloadUrl,
+          "update manifest rejects non-official download hosts");
+    Check(ParseUpdateManifest(
+              R"({"version":"1.2.0","download_url":"https://github.com/ashish12147/VOICEMOD/releases/download/v1.2.1/ChromeMic-1.2.1-win-x64.zip"})",
+              manifest) == UpdateManifestError::InvalidDownloadUrl,
+          "update manifest rejects mismatched version and asset paths");
+    Check(ParseUpdateManifest(
+              R"({"version":"1.2.0","download_url":"https://github.com/ashish12147/VOICEMOD/releases/download/v1.2.0/ChromeMic-1.2.0-win-x64.zip","extra":true})",
+              manifest) == UpdateManifestError::UnexpectedField,
+          "update manifest rejects unknown fields");
+    Check(manifest.version == originalVersion,
+          "failed manifest parsing leaves the prior validated value unchanged");
+
+    const std::string oversized(kMaximumUpdateManifestBytes + 1U, ' ');
+    Check(ParseUpdateManifest(oversized, manifest) ==
+              UpdateManifestError::ManifestTooLarge,
+          "update manifest enforces the 16 KiB response bound");
 }
 
 void TestGainSmoothing() {
@@ -462,6 +550,31 @@ void TestRouterFailureLifecycle() {
     config.destinationId = L"{ChromeMic-invalid-destination}";
     config.destinationName = L"Invalid destination";
 
+    {
+        AudioRouter validationRouter;
+        RouteConfig missingMicrophone = config;
+        missingMicrophone.includeMicrophone = true;
+        std::wstring validationError;
+        Check(!validationRouter.Start(missingMicrophone, validationError) &&
+                  validationError.find(L"microphone") != std::wstring::npos,
+              "router rejects enabled microphone without an exact endpoint");
+
+        RouteConfig monitorWithoutMicrophone = config;
+        monitorWithoutMicrophone.enableMonitor = true;
+        monitorWithoutMicrophone.monitorId = L"physical-headphones";
+        Check(!validationRouter.Start(monitorWithoutMicrophone, validationError),
+              "router rejects monitor without microphone capture");
+
+        RouteConfig unsafeMonitor = config;
+        unsafeMonitor.includeMicrophone = true;
+        unsafeMonitor.microphoneId = L"physical-microphone";
+        unsafeMonitor.enableMonitor = true;
+        unsafeMonitor.monitorId = unsafeMonitor.destinationId;
+        Check(!validationRouter.Start(unsafeMonitor, validationError) &&
+                  validationError.find(L"cannot") != std::wstring::npos,
+              "router rejects monitoring into the game cable");
+    }
+
     AudioRouter router;
     RouteConfig staleIdentity = config;
     ++staleIdentity.sourceProcessCreationTime;
@@ -474,6 +587,15 @@ void TestRouterFailureLifecycle() {
     Check(staleSnapshot.state == RouterState::Error &&
               staleSnapshot.message.find(L"changed or restarted") != std::wstring::npos,
           "stale process identity fails before opening the destination");
+
+    std::wstring retryError;
+    Check(router.Start(config, retryError),
+          "terminal error worker is reaped so the route can retry without an app restart");
+    for (int poll = 0; poll < 100 && router.Snapshot().state == RouterState::Starting; ++poll) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    Check(router.Snapshot().state == RouterState::Error,
+          "retry after a terminal route error runs the corrected generation");
     router.Stop();
 
     for (int iteration = 0; iteration < 12; ++iteration) {
@@ -506,11 +628,21 @@ void TestRouterFailureLifecycle() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--live-update-check") {
+        const UpdateCheckResult update = CheckForChromeMicUpdates();
+        std::wcout << L"Live update status: " << static_cast<int>(update.status)
+                   << L" — " << update.message << L"\n";
+        return update.status == UpdateCheckStatus::UpToDate ? 0 : 2;
+    }
+
     TestRingWrapAndOverflow();
     TestRingOversizedPush();
     TestLimiterAndMalformedFloat();
     TestMuteAndGainClamp();
+    TestPcm16Mixing();
+    TestUpdateManifestAndVersions();
+    voice_effects_tests::Run(Check);
     TestGainSmoothing();
     TestFrameCountConversion();
     TestClockDriftController();

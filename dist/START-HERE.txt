@@ -1,31 +1,33 @@
-CHROMEMIC 1.1 — QUICK START
+CHROMEMIC 1.2 — QUICK START
 ===========================
 
 WHAT IT DOES
-Routes only one selected application's audio into a virtual microphone cable.
-Choose Chrome for YouTube; game sound and unrelated applications are excluded.
+Mixes one selected application's audio with your optional selected microphone
+and sends only that mix into a virtual microphone cable. Game sound and
+unrelated applications stay excluded.
 
 SETUP
-1. Install a trusted virtual cable such as VB-CABLE:
-   https://vb-audio.com/Cable/index.htm
-
+1. Install a trusted cable such as VB-CABLE: https://vb-audio.com/Cable/index.htm
 2. Open Chrome and play the YouTube/video/audio you want to send.
-
-3. Run ChromeMic.exe. Press Refresh apps if Chrome is missing.
-
-4. APPLICATION: choose "Google Chrome — all tabs/windows in this process tree".
-
-5. DESTINATION: choose the cable playback side (normally CABLE Input for VB-CABLE).
-
-6. Press Start routing. Confirm the meter moves.
-
-7. In the game, choose the matching cable recording side as Microphone
+3. Run ChromeMic.exe and wait for the GitHub update check to say 1.2.0 is current.
+4. APPLICATION AUDIO: choose Chrome. Refresh apps if it is missing.
+5. OPTIONAL VOICE: enable Include microphone, choose your mic, then choose
+   Natural, Clear Mic, Broadcast, Radio, Robot, or Deep Tone.
+6. GAME CABLE: choose its playback side (normally CABLE Input for VB-CABLE).
+7. Press Start routing and check all relevant meters.
+8. In the game, choose the matching recording side as its microphone
    (normally CABLE Output for VB-CABLE).
 
+LOOPBACK TEST
+Enable "Loopback test — hear microphone/effect in headphones" and select
+physical headphones. It monitors the processed microphone only, not Chrome.
+It is off at every launch. Never use the game cable as the monitor.
+
 IMPORTANT
-- Chrome selection includes all tabs/windows in that selected process tree; it is not per-tab.
-- If Chrome exits or restarts, routing stops. Press Refresh apps, confirm the selection, and Start again.
-- Paused/silent Chrome produces silence. Protected/DRM playback may not be capturable.
-- Stop releases capture. Mute keeps the route open but sends silence.
-- Use headphones and disable mic/cable monitoring to prevent feedback.
-- Do not select Voicemod's internal output bridge as the destination. Use a true virtual cable.
+- Chrome scope is its selected process tree, not one tab.
+- If Chrome or the enabled mic exits/disconnects, routing stops safely.
+- Mute silences only the game cable; headphone loopback may continue.
+- Routing is blocked until GitHub confirms this exact build is current; it
+  checks again before every route start.
+- Audio is never recorded or uploaded. The update check sends no audio or IDs.
+- This unsigned app still requires a separately installed signed virtual cable.

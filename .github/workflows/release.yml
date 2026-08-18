@@ -1,0 +1,37 @@
+name: Publish tagged release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Verify and publish the Windows package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          archive="ChromeMic-${version}-win-x64.zip"
+          checksum="${archive}.sha256.txt"
+
+          test -f "$archive"
+          test -f "$checksum"
+          expected="$(awk 'NR == 1 { print toupper($1) }' "$checksum")"
+          actual="$(sha256sum "$archive" | awk '{ print toupper($1) }')"
+          test "$expected" = "$actual"
+
+          gh release create "$GITHUB_REF_NAME" "$archive" "$checksum" \
+            --verify-tag \
+            --title "ChromeMic ${version}" \
+            --notes "Windows x64 release. Download the ZIP, verify it with the attached SHA-256 file, extract it, and run ChromeMic.exe. A separately installed signed virtual-audio cable is required. The executable is currently unsigned."

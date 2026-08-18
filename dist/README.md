@@ -1,97 +1,107 @@
-# ChromeMic 1.1
+# ChromeMic 1.2
 
-ChromeMic routes audio from one selected Windows application into a virtual microphone cable. Pick Google Chrome, play YouTube, and a game can receive that audio from the cable microphone while the game's own sound, voice chat, notifications, and unrelated applications stay excluded.
+ChromeMic mixes audio from one selected Windows application with an optional microphone and sends the result to a virtual microphone cable. Select Google Chrome for YouTube and the selected microphone for your voice; game audio, notifications, voice chat, and unrelated applications remain excluded.
 
-Chrome capture is process-tree-wide: all tabs and windows belonging to the selected Chrome process tree are included. It is not a per-tab selector. If Chrome is restarted, ChromeMic stops and requires **Refresh apps** and **Start routing** again instead of silently attaching to a different process.
+Chrome capture is process-tree-wide: all tabs and windows in the selected Chrome process tree are included. It is not a per-tab selector. If Chrome restarts, ChromeMic stops and requires a fresh selection instead of silently attaching to another process.
 
 ## Requirements
 
 - 64-bit Windows 10 build 20348 or later, or Windows 11.
 - A trusted, signed render-to-recording virtual cable. [VB-CABLE](https://vb-audio.com/Cable/index.htm) is one option.
-- Headphones are recommended to prevent ordinary acoustic feedback.
+- Internet access to GitHub when ChromeMic starts or **Retry update check** is pressed. By request, routing is fail-closed until this exact version is confirmed current.
+- Headphones for loopback testing, to prevent acoustic feedback.
 
-A desktop application cannot create a microphone endpoint by itself; Windows requires a signed audio driver. ChromeMic does not download or install drivers. Voicemod's internal render bridge is intentionally blocked because it is not a generic cable endpoint.
+A desktop application cannot create a microphone endpoint by itself; Windows requires a signed audio driver. ChromeMic does not install drivers. Voicemod's internal bridge is intentionally blocked as a cable destination.
 
-This local build is not Authenticode-signed. Windows may show a reputation warning after download or transfer. The release includes SHA-256 manifests for integrity checking, but a bundled hash does not authenticate the publisher by itself.
+This release is not Authenticode-signed. Windows may show a reputation warning. SHA-256 manifests check file integrity, but a bundled hash does not authenticate the publisher by itself.
 
 ## Quick setup
 
 1. Install a trusted virtual cable and reboot if its installer requests it.
-2. Open Chrome and start the YouTube/video/audio you want to send.
-3. Run `ChromeMic.exe`, then press **Refresh apps** if Chrome is not listed.
-4. Under **Capture only this application**, select **Google Chrome — all tabs/windows in this process tree**.
-5. Under **Send to virtual cable**, select the cable playback side. With VB-CABLE this is normally **CABLE Input**.
-6. Leave gain at `0.0 dB`, press **Start routing**, and confirm the level meter moves.
-7. In the game, select the cable recording side as its microphone. With VB-CABLE this is normally **CABLE Output**.
+2. Open Chrome and play the YouTube/video/audio you want to send.
+3. Run `ChromeMic.exe` and wait for **ChromeMic 1.2.0 is current**. If the check fails, verify internet access and press **Retry**.
+4. Select Chrome under **Application audio**. Press **Refresh apps** if it is missing.
+5. To add your voice, enable **Include microphone**, then select the exact microphone you want.
+6. Select a microphone effect: **Natural**, **Clear Mic**, **Broadcast**, **Radio**, **Robot**, or **Deep Tone**. Effects change only your microphone.
+7. Select the cable playback side under **Game cable**. With VB-CABLE this is normally **CABLE Input**.
+8. Press **Start routing** and confirm the application, microphone, and game-output meters move.
+9. In the game, select the cable recording side as its microphone. With VB-CABLE this is normally **CABLE Output**.
 
-Use **Mute output** for instant silence while keeping the route open. **Stop** releases capture completely.
+Use **Mute game output** for instant silence to the game while keeping capture open. **Stop** releases every audio endpoint.
+
+## Loopback test mode
+
+Enable **Loopback test — hear microphone/effect in headphones**, choose physical headphones, and start routing. This monitors only the selected microphone after its effect and gain; it does not replay Chrome because Chrome is already audible through its normal output.
+
+Loopback testing is off at every launch and cannot target the game cable. Use headphones, keep the level low, and turn it off before using speakers. If the monitor disconnects, game routing continues and ChromeMic reports that monitoring stopped.
 
 ## Included features
 
-- Application picker with Chrome preferred and a manual refresh button.
-- Process-tree isolation: audio from unrelated apps and the game is excluded.
-- Fail-closed PID, executable-path, and process-creation-time validation.
-- Automatic stop if the selected application exits or restarts.
-- Live output meter, adjustable `-12 dB` to `+6 dB` gain, click-free smoothing, mute, and an always-on `-1 dBFS` limiter.
-- Bounded in-memory buffering, silence on underrun, and cross-device clock-drift compensation.
-- Cable-side pairing guidance for the game's microphone selector.
-- No recording, telemetry, account, updater, background service, or automatic network request.
+- Exact application/process-tree picker with Chrome preferred on first use.
+- Optional exact microphone selection and independent application/microphone gains from `-24 dB` to `+6 dB`.
+- Six live microphone modes: Natural, Clear Mic, Broadcast, Radio, Robot, and Deep Tone.
+- Mic/effect-only headphone loopback test, off by default.
+- Three live meters, limiter warning, and game-output-only mute.
+- Process identity validation using PID, creation time, and executable path; no silent fallback after a restart.
+- Bounded queues, silence on underrun, independent clock-drift compensation, smoothed gains, finite-sample sanitization, and a final `-1 dBFS` limiter.
+- A strict GitHub update gate using a small validated HTTPS manifest. Update links must match this repository and release version exactly.
+- No recording, account, telemetry, background service, or automatic executable installation.
 
-Saved application path, destination ID, and gain are stored under `HKCU\Software\ChromeMic`. Audio remains in bounded RAM and is never written to disk.
+Saved application path, endpoint IDs, gains, and effect are stored under `HKCU\Software\ChromeMic`. Microphone inclusion and loopback monitoring are deliberately disabled again at every launch. Audio stays in bounded RAM and is never written to disk.
+
+## Update and privacy behavior
+
+At startup, before every route start, and on **Retry**, ChromeMic makes one HTTPS GET for [`update.json`](https://github.com/ashish12147/VOICEMOD/blob/main/update.json). It sends no audio, endpoint names, process names, identifiers, analytics, or account data. The response is capped at 16 KiB, parsed as a strict two-field manifest, and must point to the matching release ZIP in `ashish12147/VOICEMOD`.
+
+Routing is allowed only when the manifest version exactly equals the running build. A newer version exposes **Update now** and opens only the validated GitHub release asset; an older manifest is rejected as stale or rollback data. ChromeMic never downloads or executes an update itself. Network, TLS, HTTP, or manifest-validation failure also blocks a new route because the requested policy is “run only on the latest update.”
 
 ## Important behavior
 
-- Only the selected application's process tree is captured; choosing Chrome includes its audio-service and renderer child processes.
-- ChromeMic does not capture a single tab. Use separate Chrome process trees/profiles only if Windows exposes them as separate selectable application roots.
-- A selected application with no active render stream produces silence. Pausing YouTube is not an error.
-- Protected or DRM-controlled playback may not be capturable.
-- The app does not automatically reconnect to a restarted process. Refresh and confirm the selection before starting again.
-- Do not choose speakers or headphones as the destination; choose the playback side of a real virtual cable.
+- Only the selected application's process tree is captured. Chrome includes its renderer/audio-service child processes.
+- ChromeMic cannot isolate one tab when tabs share a process tree.
+- A paused application or one with no active render stream produces silence. Protected/DRM playback may not be capturable.
+- A missing enabled microphone stops the route rather than silently dropping your voice.
+- A failed headphone monitor is isolated: the cable route continues.
+- Do not choose speakers/headphones as the game destination; choose the playback side of a real virtual cable.
+- Games may heavily filter music. Disable their noise suppression, echo cancellation, and automatic gain control where possible.
 
 ## Troubleshooting
 
+- **Update check is blocked:** verify GitHub access, Windows date/time, proxy/firewall, then press **Retry**.
 - **Chrome is missing:** open a visible Chrome window, then press **Refresh apps**.
-- **Meter stays at zero:** make sure the selected Chrome process tree is actively playing audio. Refresh and reselect it if Chrome restarted. Protected content may remain silent.
-- **Meter moves but the game hears nothing:** explicitly select the cable's recording side in the game, then restart the game if it cached its device list.
-- **No cable appears:** finish installing the cable, reboot if requested, and press **Refresh apps**.
-- **Music sounds cut or robotic:** disable the game's noise suppression, echo cancellation, and automatic gain control; enable an original-sound/music mode if offered.
-- **Echo or feedback:** use headphones and disable Windows “Listen to this device,” microphone monitoring, and cable monitoring.
-- **Route stops:** the selected app exited/restarted or an audio endpoint changed. Press **Refresh apps**, verify both choices, and start again.
+- **Application meter is zero:** play non-protected audio and reselect Chrome if it restarted.
+- **Mic meter is zero:** verify the selected endpoint and enable Windows microphone access for desktop apps.
+- **Meters move but the game hears nothing:** select the cable recording side in the game, then restart the game if it cached devices.
+- **Echo or feedback:** use headphones and disable Windows “Listen to this device” and other monitoring paths.
+- **Music sounds cut or robotic in-game:** disable the game's voice cleanup/AGC or use its original-sound/music mode.
 
 ## Build and test
 
-The program is dependency-free C++20/Win32 using WASAPI. Build with Visual Studio 2022 Build Tools, the Desktop C++ workload, and Windows SDK 10.0.20348 or newer:
+Build with Visual Studio 2022 Build Tools, the Desktop C++ workload, and Windows SDK 10.0.20348 or newer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-The script builds a statically linked x64 release, runs automated process-selection, activation-parameter, DSP, buffering, drift, lifecycle, and live Windows-audio tests, then publishes a whitelisted deterministic package. With Chrome open and a supported cable installed, request an endpoint-open smoke check with:
+The authoritative script builds a static-runtime x64 release, runs parser, mixer, effects, process-selection, DSP, buffering, drift, lifecycle, and live Windows-audio tests, then stages a deterministic whitelisted package. Optional endpoint-open and process-isolation checks are:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -HardwareSmoke
-```
-
-The hardware smoke check proves the selected application capture and cable-render clients can start. A stronger deterministic test sends two faint tones from separate processes, routes only one, captures the installed cable's recording side, and checks that the unrelated tone is excluded:
-
-```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -MicrophoneSmoke -MonitorSmoke
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -ProcessIsolationTest
 ```
 
-This signal test changes no default device or endpoint volume. It runs only when it can identify an unambiguous generic cable pair and a separate physical playback endpoint. `scripts\build.ps1` is the authoritative release pipeline. `CMakeLists.txt` is a secondary developer entry point.
+The microphone/monitor smoke briefly opens the first safe physical microphone and playback endpoint; use headphones before requesting it.
+
+`CMakeLists.txt` is a secondary developer entry point.
 
 ## Architecture
 
 ```text
-selected application process tree (Windows process loopback)
-  -> fixed PCM capture + Windows format conversion
-  -> smoothed gain + finite-sample sanitization + -1 dBFS limiter
-  -> bounded overwrite-oldest frame ring + drift compensation
-  -> shared-mode WASAPI render
-  -> virtual cable playback side
-  -> matching cable recording side selected as the game's microphone
+selected application process tree -> process loopback -> app gain/drift ----+
+                                                                           +-> sum + final limiter -> virtual cable -> game microphone
+selected microphone -> shared capture -> effect + mic gain/drift ----------+
+                                             +-> optional physical-headphone loopback test
 ```
 
-Windows application loopback is endpoint-independent, so Chrome may keep playing through your normal headphones while only its captured process tree is copied into the cable.
-
-See `AUDIT.md` for review coverage, verification evidence, and residual limits.
+See `AUDIT.md` for verification evidence and residual limits.

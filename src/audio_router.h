@@ -1,5 +1,7 @@
 #pragma once
 
+#include "voice_effects.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -21,7 +23,15 @@ struct RouteConfig {
     std::wstring sourceExecutablePath;
     std::wstring destinationId;
     std::wstring destinationName;
-    float gainDb = 0.0F;
+    bool includeMicrophone = false;
+    std::wstring microphoneId;
+    std::wstring microphoneName;
+    bool enableMonitor = false;
+    std::wstring monitorId;
+    std::wstring monitorName;
+    float applicationGainDb = 0.0F;
+    float microphoneGainDb = 0.0F;
+    VoiceEffectMode voiceEffect = VoiceEffectMode::Natural;
     bool muted = false;
 };
 
@@ -29,10 +39,16 @@ struct RouterSnapshot {
     RouterState state = RouterState::Stopped;
     std::wstring message = L"Ready";
     std::wstring sourceName;
+    std::wstring microphoneName;
     std::wstring destinationName;
+    std::wstring monitorName;
     float peak = 0.0F;
+    float applicationPeak = 0.0F;
+    float microphonePeak = 0.0F;
     bool muted = false;
     bool limiting = false;
+    bool monitorActive = false;
+    std::wstring monitorMessage;
     uint64_t droppedFrames = 0;
     uint64_t underrunFrames = 0;
     uint32_t queuedMilliseconds = 0;
@@ -51,7 +67,9 @@ public:
 
     bool Start(const RouteConfig& config, std::wstring& errorMessage);
     void Stop();
-    void SetGainDb(float gainDb) noexcept;
+    void SetApplicationGainDb(float gainDb) noexcept;
+    void SetMicrophoneGainDb(float gainDb) noexcept;
+    void SetVoiceEffect(VoiceEffectMode mode) noexcept;
     void SetMuted(bool muted) noexcept;
     [[nodiscard]] RouterSnapshot Snapshot() const;
 
@@ -64,7 +82,9 @@ private:
     std::thread worker_;
     bool stopping_ = false;
     std::atomic_bool stopRequested_ = false;
-    std::atomic<float> gainDb_ = 0.0F;
+    std::atomic<float> applicationGainDb_ = 0.0F;
+    std::atomic<float> microphoneGainDb_ = 0.0F;
+    std::atomic<uint8_t> voiceEffectMode_ = static_cast<uint8_t>(VoiceEffectMode::Natural);
     std::atomic_bool muted_ = false;
 
     mutable std::mutex snapshotMutex_;

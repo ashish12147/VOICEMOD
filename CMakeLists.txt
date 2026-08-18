@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(ChromeMic VERSION 1.1.0 LANGUAGES CXX RC)
+project(ChromeMic VERSION 1.2.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,7 @@ add_library(chromemic_core STATIC
     src/audio_router.cpp
     src/dsp.cpp
     src/process_loopback.cpp
+    src/voice_effects.cpp
 )
 
 target_include_directories(chromemic_core PUBLIC src)
@@ -26,11 +27,12 @@ target_link_libraries(chromemic_core PUBLIC ole32 uuid avrt propsys mmdevapi use
 
 add_executable(ChromeMic WIN32
     src/main.cpp
+    src/update_checker.cpp
     resources/ChromeMic.rc
 )
 
 target_compile_options(ChromeMic PRIVATE /W4 /sdl /guard:cf /permissive- /EHsc /utf-8)
-target_link_libraries(ChromeMic PRIVATE chromemic_core advapi32 comctl32 dwmapi gdi32 shell32 user32 uxtheme)
+target_link_libraries(ChromeMic PRIVATE chromemic_core advapi32 comctl32 dwmapi gdi32 shell32 user32 uxtheme winhttp)
 # ChromeMic.rc already embeds the reviewed application manifest. Disable the
 # generator's second manifest resource to avoid a duplicate RT_MANIFEST entry.
 target_link_options(ChromeMic PRIVATE /MANIFEST:NO /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA /GUARD:CF /CETCOMPAT /Brepro)
@@ -42,12 +44,14 @@ add_executable(chromemic_tests
     src/audio_devices.cpp
     src/audio_router.cpp
     src/process_loopback.cpp
+    src/update_checker.cpp
+    src/voice_effects.cpp
 )
 
 target_include_directories(chromemic_tests PRIVATE src)
 target_compile_definitions(chromemic_tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A00000A)
 target_compile_options(chromemic_tests PRIVATE /W4 /sdl /guard:cf /permissive- /EHsc /utf-8)
-target_link_libraries(chromemic_tests PRIVATE ole32 uuid avrt propsys mmdevapi user32)
+target_link_libraries(chromemic_tests PRIVATE ole32 uuid avrt propsys mmdevapi user32 winhttp)
 target_link_options(chromemic_tests PRIVATE /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA /GUARD:CF /CETCOMPAT /Brepro)
 
 enable_testing()

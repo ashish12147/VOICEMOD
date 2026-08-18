@@ -12,6 +12,14 @@ struct DspResult {
     bool limiting = false;
 };
 
+// Mixes two optional stereo PCM16 sources and applies the final -1 dBFS safety
+// limiter. Null source pointers are treated as silence.
+DspResult MixPcm16Stereo(const std::byte* application,
+                         const std::byte* microphone,
+                         std::byte* output,
+                         uint32_t frames,
+                         bool muted) noexcept;
+
 class AudioProcessor {
 public:
     AudioProcessor(const WAVEFORMATEX& format, float initialGainDb = 0.0F);
@@ -23,6 +31,7 @@ public:
 
     static float ClampGainDb(float gainDb) noexcept;
     static float DbToLinear(float gainDb) noexcept;
+    static float LimitForMix(float sample, bool& limiting) noexcept;
 
 private:
     enum class SampleKind { Unsupported, Float32, Pcm16, Pcm24, Pcm32 };

@@ -27,6 +27,47 @@ void WriteUnaligned(std::byte* data, T value) noexcept {
 
 } // namespace
 
+DspResult MixPcm16Stereo(const std::byte* application,
+                         const std::byte* microphone,
+                         std::byte* output,
+                         uint32_t frames,
+                         bool muted) noexcept {
+    DspResult result;
+    if (output == nullptr || frames == 0) {
+        return result;
+    }
+    constexpr size_t kChannels = 2;
+    constexpr size_t kBytesPerSample = sizeof(int16_t);
+    constexpr size_t kBytesPerFrame = kChannels * kBytesPerSample;
+    if (muted) {
+        std::memset(output, 0, static_cast<size_t>(frames) * kBytesPerFrame);
+        return result;
+    }
+
+    for (uint32_t frame = 0; frame < frames; ++frame) {
+        for (size_t channel = 0; channel < kChannels; ++channel) {
+            const size_t offset = static_cast<size_t>(frame) * kBytesPerFrame +
+                                  channel * kBytesPerSample;
+            int16_t applicationSample = 0;
+            int16_t microphoneSample = 0;
+            if (application != nullptr) {
+                applicationSample = ReadUnaligned<int16_t>(application + offset);
+            }
+            if (microphone != nullptr) {
+                microphoneSample = ReadUnaligned<int16_t>(microphone + offset);
+            }
+            const float mixed = static_cast<float>(applicationSample) / 32768.0F +
+                                static_cast<float>(microphoneSample) / 32768.0F;
+            const float limited = AudioProcessor::LimitForMix(mixed, result.limiting);
+            result.peak = std::max(result.peak, std::abs(limited));
+            const auto encoded = static_cast<int16_t>(std::lround(
+                std::clamp(limited, -1.0F, 1.0F) * 32767.0F));
+            WriteUnaligned(output + offset, encoded);
+        }
+    }
+    return result;
+}
+
 AudioProcessor::AudioProcessor(const WAVEFORMATEX& format, float initialGainDb)
     : channels_(format.nChannels),
       bytesPerSample_(format.nChannels == 0 ? 0 : static_cast<uint16_t>(format.nBlockAlign / format.nChannels)),
@@ -95,6 +136,10 @@ float AudioProcessor::Limit(float sample, bool& limiting) noexcept {
     const float span = kLimiterCeiling - kLimiterKnee;
     const float compressed = kLimiterKnee + span * (1.0F - std::exp(-(magnitude - kLimiterKnee) / span));
     return std::copysign(std::min(compressed, kLimiterCeiling), sample);
+}
+
+float AudioProcessor::LimitForMix(float sample, bool& limiting) noexcept {
+    return Limit(sample, limiting);
 }
 
 float AudioProcessor::Decode(const std::byte* sample) const noexcept {

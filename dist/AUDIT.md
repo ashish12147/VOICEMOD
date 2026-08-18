@@ -1,57 +1,51 @@
-# ChromeMic 1.1 release audit
+# ChromeMic 1.2 release audit
 
 ## Outcome
 
-ChromeMic 1.1 is a local-only x64 Windows router that captures one selected application's process tree and renders it to a separately installed virtual-audio cable. Selecting Chrome includes audio from that Chrome process tree while excluding the game and unrelated applications. The game must use the cable's matching recording side as its microphone.
+ChromeMic 1.2 captures one exact application process tree, optionally captures one exact microphone, applies an independently selected voice effect and gain, mixes both sources, and renders the result to a separately installed virtual-audio cable. An optional mic/effect-only loopback test renders to a physical listening endpoint without duplicating the selected application's normal playback.
 
-The selector is Chrome-wide for the chosen process tree, not per-tab. ChromeMic does not create a microphone driver, silently change the selected process, or automatically attach after the selected app restarts.
+The release also has a strict update gate at startup and before every route start. Routing stays disabled until the repository's HTTPS manifest exactly matches the built-in `1.2.0` version. A newer version opens only a validated `ashish12147/VOICEMOD` GitHub release URL; an older manifest is rejected as stale or rollback data. ChromeMic does not download or execute it.
 
-## Independent review rounds
+## Review tracks
 
-Three specialist review tracks covered the process-loopback engine, application-selection UX/reliability, and release/toolchain integrity. Findings were applied and re-audited.
-
-- Audio architecture: replaced playback-endpoint loopback with Windows process-tree loopback; uses explicit stereo PCM16/44.1-kHz capture because the virtual process client does not expose a normal endpoint mix format; made asynchronous activation bounded and stop-aware; kept the completion handler self-contained for safe late callbacks; and rejected inverse/exclude mode because it can recapture ChromeMic's own cable render stream.
-- Selection reliability: enumerates visible desktop application roots, prefers Chrome only for an empty initial choice, labels Chrome scope as all tabs/windows in its process tree, stores the executable path rather than a reusable PID, validates PID creation time and canonical image path before routing, and fails closed when the selected application exits or restarts.
-- Release integrity: aligned the authoritative PowerShell build and secondary CMake project; required Windows SDK process-loopback headers; statically linked the MSVC runtime; enabled ASLR, high-entropy VA, DEP/NX, Control Flow Guard, CET compatibility, and reproducible-link settings; staged only whitelisted files after tests; normalized archive timestamps; and generated SHA-256 manifests.
+- Audio architecture: dual shared-mode capture paths, independent bounded rings and drift controllers, saturating final mix, monitor-failure isolation, hard stop on enabled-microphone failure, and explicit PCM16 stereo/44.1-kHz process-loopback format.
+- Effects/DSP: allocation-free stateful effects, mode-reset isolation, finite-value sanitization, linked stereo dynamics, smoothed per-source gains, and a final `-1 dBFS` limiter.
+- Selection/UX: exact PID/path/creation-time application identity, exact endpoint IDs, mic/monitor off by default, physical-only monitor choices, no fallback from stale saved choices, separate meters and clear failure copy.
+- Update security: HTTPS WinHTTP on a background thread, no-cache requests, redirects disabled, certificate-revocation checks, bounded response size, strict JSON/version parsing, duplicate/unknown-field rejection, and an exact repository/version/asset URL allow-list.
+- Release integrity: static MSVC runtime, ASLR, high-entropy VA, DEP/NX, CFG, CET compatibility, reproducible-link settings, post-test staging, normalized archive timestamps, and SHA-256 manifests.
 
 ## Automated verification
 
-The release test suite covers:
+The deterministic suite covers:
 
-- Chrome recognition, application labels, saved-path selection, and stale-selection failure.
-- Exact process-loopback activation parameters and fixed capture format.
-- Live desktop-application and audio-endpoint enumeration where the active window station permits it.
-- Live process-loopback activation/initialization on a supported Windows build.
-- PCM16/24/32 and extensible PCM/float DSP paths; finite-sample sanitization; gain clamp, smoothing, mute, and limiter behavior.
-- Ring-buffer wrap, overflow, underrun, zero-capacity, and clear behavior.
-- Drift conversion and deterministic ±1000-ppm 30-minute queue simulations.
-- Invalid-route errors, repeated lifecycle transitions, and concurrent Stop/Start behavior.
+- PCM source mixing, absent-source silence, cancellation, game-output mute, and final headroom.
+- All six voice modes, reset reproducibility, callback-chunk invariance, stereo coherence, invalid-mode fallback, mode distinction, Radio band-pass response, and Deep Tone pitch shift.
+- Semantic-version parsing/comparison; strict valid manifest; bad host/path/version; duplicates; unknown fields; state preservation on failure; and the 16-KiB limit.
+- Chrome recognition, application labels, saved identity selection, stale-selection failure, and process-loopback activation parameters.
+- Live process-loopback activation and active endpoint enumeration on an interactive supported host.
+- PCM16/24/32 and extensible PCM/float DSP; gain clamp/smoothing; ring wrap/overflow/underrun/zero capacity; and deterministic ±1000-ppm 30-minute drift simulations.
+- Router validation for a missing enabled microphone and unsafe cable monitoring, plus repeated error lifecycle and concurrent Stop/Start.
 
-Interactive host verification enumerated seven selectable desktop applications and all active audio endpoints. With a temporary isolated Chrome profile playing a local 997-Hz Web Audio tone, `scripts\build.ps1 -HardwareSmoke` successfully opened Chrome process-tree capture and rendered it to the installed VB-CABLE endpoint.
+The current-source host probes were also run directly on this machine. The combined application + physical-microphone + headphone-monitor smoke reached `Running` with the monitor active. The process-isolation signal test routed only its 997-Hz target into VB-CABLE and measured it at `-31.17 dBFS`; the unrelated 1601-Hz process measured `-138.43 dBFS`, or `107.26 dB` below the target. The package's `BUILD-INFO.txt` flags describe only the options used by the package-producing build command; these independent host results remain separate evidence.
 
-The stronger `scripts\build.ps1 -ProcessIsolationTest` check spawned two independent WASAPI renderer processes on a physical endpoint, routed only the 997-Hz target process into VB-CABLE, captured `CABLE Output`, and measured:
+## Safety and privacy
 
-```text
-Target 997 Hz:              -49.00 dBFS
-Unrelated 1601 Hz:         -143.76 dBFS
-Unrelated/target ratio:     -94.77 dB
-Result: PASS
-```
-
-This directly verifies on the current host that target-process audio reaches the cable while audio from an unrelated process is excluded. A particular game's microphone-processing chain remains outside this deterministic test.
-
-## Safety and privacy review
-
-- No audio is written to disk or sent over a network.
-- No account, telemetry, updater, service, or automatic network request is present.
-- Routing stops on target exit, stale identity, device invalidation, or unrecoverable audio failure.
-- The audio queue is bounded; underruns emit silence; output has smoothed gain and an always-on limiter.
-- Voicemod's internal render bridge is blocked as an unsupported destination. A true signed render-to-recording cable is required.
+- Audio is held only in bounded RAM and is never written to disk or sent over the network.
+- The update request contains no audio, process/device names, persistent identifier, telemetry, or account data.
+- Routing never auto-starts. Microphone inclusion and loopback monitoring reset to off on launch.
+- An enabled microphone failure stops routing rather than silently dropping the user's voice.
+- A headphone-monitor failure disables only monitoring; game output continues.
+- Monitoring into the cable is rejected to avoid recursive capture. The UI limits monitor choices to non-virtual playback endpoints.
+- The update manifest cannot redirect ChromeMic to another host or mismatched release path.
 
 ## Residual limits
 
-- Application loopback requires Windows 10 build 20348 or later. Unsupported systems fail rather than falling back to whole-device capture.
-- Chrome isolation is process-tree-wide, not per-tab. Chrome profiles/windows sharing a process tree cannot be separated by this API.
-- Paused applications and applications without an active render stream legitimately produce silence. Protected/DRM audio may not be available.
-- A game may apply voice filters that degrade music; its noise suppression, echo cancellation, and automatic gain control may need adjustment.
-- The local executable is not Authenticode-signed. SHA-256 manifests detect changed bytes when compared through a trusted channel but do not authenticate the publisher or prevent Windows reputation warnings.
+- Application loopback requires Windows 10 build 20348 or later. There is no whole-device fallback.
+- Chrome capture is process-tree-wide, not reliably per-tab.
+- Paused/no-stream applications produce silence; DRM playback may be unavailable.
+- Effects are lightweight local DSP, not AI voice cloning or studio noise reconstruction.
+- Mic signal quality and a particular game's processing chain depend on external hardware/software and are not fully deterministic in automated tests.
+- Strict fail-closed update policy means GitHub/network/TLS failure prevents starting a new route.
+- Closing during an in-flight update request may wait for WinHTTP's bounded network timeouts before the process exits.
+- A separate signed virtual-cable driver is still required.
+- The executable is not Authenticode-signed; hashes do not replace publisher authentication or SmartScreen reputation.
